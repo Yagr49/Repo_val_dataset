@@ -38,30 +38,40 @@ services:
       retries: 20
 
   minio:
-    image: 'bitnami/minio:latest'
+    image: 'minio/minio:latest'
     volumes:
-    - minio_data:/bitnami/minio/data
+    - minio_data:/data
     - /etc/localtime:/etc/localtime:ro
-    - ./minio-script.sh:/docker-entrypoint-init.d/init.sh
     ports:
     - ${MINIO_OUTER_PORT}:${MINIO_INNER_PORT}
     - 9000:9000
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    command: server /data --console-address ":${MINIO_INNER_PORT}"
     healthcheck:
-      test: 'mc ready local'
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
       start_interval: 2s
       start_period: 10s
       timeout: 5s
       interval: 60s
       retries: 5
-    command: 
-      - /bin/bash
-      - -c
-      - |
-        /opt/bitnami/scripts/minio/run.sh &
-        while ! mc ready local; do sleep 1; done
-        mc admin update ALIAS
-        /docker-entrypoint-init.d/init.sh
-        tail -f /dev/null
+
+  minio-init:
+    image: 'minio/mc:latest'
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD;
+      mc mb --ignore-existing local/medforce;
+      mc anonymous set public local/medforce;
+      exit 0;
+      "
   pg:
     image: postgres
     ports:
