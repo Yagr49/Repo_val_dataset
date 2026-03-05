@@ -1,0 +1,106 @@
+﻿x-base-service: &base-service
+  env_file:
+    - .env
+  depends_on:
+    pg:
+      condition: service_healthy
+    minio:
+      condition: service_healthy
+    keycloak:
+      condition: service_healthy
+  volumes:
+    - &schemas ./schemas:/app/schemas
+    - &backend ./backend:/app/backend
+    - &minio ./s3_adapters:/app/s3_adapters
+    - &cvat ./cvat_adapter:/app/cvat_adapter
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.5
+    volumes:
+      - ./keycloak/dev:/opt/keycloak/data/import
+      - /etc/localtime:/etc/localtime:ro
+    command: start-dev --import-realm --verbose
+    env_file:
+      - .env
+    ports:
+      - ${KC_OUTER_PORT}:${KC_INNER_PORT}
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '200 OK'",
+        ]
+      start_interval: 2s
+      start_period: 20s
+      interval: 30s
+      timeout: 5s
+      retries: 20
+
+  minio:
+    image: 'bitnami/minio:latest'
+    volumes:
+    - minio_data:/bitnami/minio/data
+    - /etc/localtime:/etc/localtime:ro
+    - ./minio-script.sh:/docker-entrypoint-init.d/init.sh
+    ports:
+    - ${MINIO_OUTER_PORT}:${MINIO_INNER_PORT}
+    - 9000:9000
+    healthcheck:
+      test: 'mc ready local'
+      start_interval: 2s
+      start_period: 10s
+      timeout: 5s
+      interval: 60s
+      retries: 5
+    command: 
+      - /bin/bash
+      - -c
+      - |
+        /opt/bitnami/scripts/minio/run.sh &
+        while ! mc ready local; do sleep 1; done
+        mc admin update ALIAS
+        /docker-entrypoint-init.d/init.sh
+        tail -f /dev/null
+  pg:
+    image: postgres
+    ports:
+      - '${POSTGRES_OUTER_PORT}:${POSTGRES_INNER_PORT}'
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - ./database/postgres-data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      interval: 30s
+      timeout: 60s
+      retries: 5
+      start_period: 80s
+      start_interval: 2s
+
+  frontend:
+    <<: *base-service
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - PORT=${FRONTEND_INNER_PORT}
+    volumes: [*schemas, *backend, *minio, *cvat]
+    tty: true
+    environment:
+      KEYCLOAK_URL: http://localhost:${KC_OUTER_PORT}
+      MINIO_URL: http://minio:${MINIO_INNER_DATA_PORT}
+      DEV_MODE: 'true'
+    ports:
+      - ${FRONTEND_OUTER_PORT}:${FRONTEND_INNER_PORT}
+    develop:
+      watch:
+        - action: sync
+          path: ./frontend/src
+          target: /app
+
+volumes:
+  minio_data:
