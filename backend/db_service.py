@@ -11,8 +11,7 @@ from backend.repo.patient import PatientRepo
 from backend.repo.payload import PayloadRepo
 from backend.repo.image import ImageRepo
 
-from s3_adapters.minio_adapter import MinioAdapter
-from s3_adapters.vk_adapter import VkAdapter
+from s3_adapters.yandex_adapter import YandexAdapter
 from cvat_adapter.cvat_adapter import CVATAdapter
 
 logger = logging.getLogger(__file__)
@@ -25,7 +24,7 @@ formatter = logging.Formatter(
 stream_handler.setFormatter(formatter)
 logger.addHandler(stream_handler)
 
-client = MinioAdapter() if os.environ.get("DEV_MODE") else VkAdapter(logger=logger)
+client = YandexAdapter(logger=logger)
 
 cvat_host = os.environ.get("CVAT_HOST")
 cvat_user = os.environ.get("CVAT_USER")
