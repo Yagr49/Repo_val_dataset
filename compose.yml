@@ -4,8 +4,6 @@
   depends_on:
     pg:
       condition: service_healthy
-    minio:
-      condition: service_healthy
     keycloak:
       condition: service_healthy
   volumes:
@@ -37,31 +35,6 @@ services:
       timeout: 5s
       retries: 20
 
-  minio:
-    image: 'bitnami/minio:latest'
-    volumes:
-    - minio_data:/bitnami/minio/data
-    - /etc/localtime:/etc/localtime:ro
-    - ./minio-script.sh:/docker-entrypoint-init.d/init.sh
-    ports:
-    - ${MINIO_OUTER_PORT}:${MINIO_INNER_PORT}
-    - 9000:9000
-    healthcheck:
-      test: 'mc ready local'
-      start_interval: 2s
-      start_period: 10s
-      timeout: 5s
-      interval: 60s
-      retries: 5
-    command: 
-      - /bin/bash
-      - -c
-      - |
-        /opt/bitnami/scripts/minio/run.sh &
-        while ! mc ready local; do sleep 1; done
-        mc admin update ALIAS
-        /docker-entrypoint-init.d/init.sh
-        tail -f /dev/null
   pg:
     image: postgres
     ports:
@@ -92,8 +65,6 @@ services:
     tty: true
     environment:
       KEYCLOAK_URL: http://localhost:${KC_OUTER_PORT}
-      MINIO_URL: http://minio:${MINIO_INNER_DATA_PORT}
-      DEV_MODE: 'true'
     ports:
       - ${FRONTEND_OUTER_PORT}:${FRONTEND_INNER_PORT}
     develop:
@@ -102,5 +73,3 @@ services:
           path: ./frontend/src
           target: /app
 
-volumes:
-  minio_data:
