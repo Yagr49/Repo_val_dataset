@@ -3,6 +3,7 @@ FROM python:3.10-slim
 ARG PORT
 ENV PORT=${PORT}
 ENV PIP_INSTALL="python -m pip --no-cache-dir install --upgrade"
+EXPOSE ${PORT}
 
 RUN apt -y update && apt -y upgrade
 RUN apt-get update && apt-get install -y \
