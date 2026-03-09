@@ -36,7 +36,7 @@ services:
       retries: 20
 
   pg:
-    image: postgres
+    image: postgres:16
     ports:
       - '${POSTGRES_OUTER_PORT}:${POSTGRES_INNER_PORT}'
     environment:
